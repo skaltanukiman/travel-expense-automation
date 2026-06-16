@@ -14,6 +14,8 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+#### パス定義 ####
+
 # このps1ファイルが置かれているフォルダ
 $AutomationDir = $PSScriptRoot
 
@@ -30,15 +32,20 @@ $PdfSourceDir = Join-Path -Path $JrRepo -ChildPath "downloads"
 # travel-expense-generator 側の入力フォルダ
 $InputDir = Join-Path -Path $GeneratorRepo -ChildPath "inputs"
 
+# このps1ファイルが置かれているフォルダの下に、処理に使用したファイルを保存するためのフォルダを定義
+$FilesbackDir = Join-Path -Path $AutomationDir -ChildPath "filesback"
+
+##############
+
 # Downloads内の無関係なPDFまで移動しないため、領収書系PDFだけに絞る
 $PdfFilePattern = "*領収書_JR*.pdf"
 
 <#
-.SYNOPSIS
-区切り用の見出しをコンソールに表示する。
+    .SYNOPSIS
+    区切り用の見出しをコンソールに表示する。
 
-.PARAMETER Message
-コンソールに表示する見出しメッセージ。
+    .PARAMETER Message
+    コンソールに表示する見出しメッセージ。
 #>
 function Write-Section {
     param([string]$Message)
@@ -51,15 +58,15 @@ function Write-Section {
 }
 
 <#
-.SYNOPSIS
-指定したディレクトリに一時的に移動して処理を実行し、実行後は元のディレクトリに戻る。
+    .SYNOPSIS
+    指定したディレクトリに一時的に移動して処理を実行し、実行後は元のディレクトリに戻る。
 
-.PARAMETER Directory
-処理を実行したい対象ディレクトリのパス。
+    .PARAMETER Directory
+    処理を実行したい対象ディレクトリのパス。
 
-.PARAMETER Script
-対象ディレクトリ内で実行する処理。
-例: { npm.cmd run download }
+    .PARAMETER Script
+    対象ディレクトリ内で実行する処理。
+    例: { npm.cmd run download }
 #>
 function Invoke-InDirectory {
     param(
@@ -76,13 +83,13 @@ function Invoke-InDirectory {
 }
 
 <#
-.SYNOPSIS
-JR九州領収書ダウンロード用プロジェクトを実行し、領収書PDFをダウンロードする。
+    .SYNOPSIS
+    JR九州領収書ダウンロード用プロジェクトを実行し、領収書PDFをダウンロードする。
 
-.DESCRIPTION
-jr-kyusyu-receipt-dl のルートディレクトリに移動し、
-npm run download を実行する。
-処理完了後は、実行前のディレクトリに戻る。
+    .DESCRIPTION
+    jr-kyusyu-receipt-dl のルートディレクトリに移動し、
+    npm run download を実行する。
+    処理完了後は、実行前のディレクトリに戻る。
 #>
 function Run-JrDownload {
     Write-Section "JR九州 領収書PDFダウンロードを開始します"
@@ -98,14 +105,104 @@ function Run-JrDownload {
 }
 
 <#
-.SYNOPSIS
-ダウンロード済みの領収書PDFを travel-expense-generator の inputs フォルダへ移動する。
+    .SYNOPSIS
+    inputs フォルダ内のPDFを filesback フォルダへ移動します。
 
-.DESCRIPTION
-PDF移動元フォルダから領収書PDFを取得し、
-travel-expense-generator の inputs フォルダへ移動する。
-$KeepExistingInputPdf が指定されていない場合は、
-移動前に inputs 内の既存PDFを削除する。
+    .DESCRIPTION
+    処理済みのPDFファイルを inputs フォルダから filesback フォルダへ移動します。
+
+    $KeepExistingInputPdf が true の場合は、PDFを移動せずに処理を終了します。
+    filesback フォルダが存在しない場合は作成し、その配下に現在日時のフォルダを作成して、
+    そこをバックアップ先として使用します。
+
+    $InputDir から $PdfFilePattern に一致するPDFファイルを取得し、
+    取得したPDFを filesback 配下の現在日時フォルダへ移動します。
+
+    移動元の inputs フォルダが存在しない場合、または移動対象PDFが存在しない場合はエラーを発生させます。
+#>
+function InputsPdf-To-Filesback {
+    # 指定がない場合は、inputs 内の処理済みPDFをバックアップフォルダに移動する
+    if ($KeepExistingInputPdf) {
+        Write-Section "pdf 移動はスキップします。inputs 内の既存PDFを残す設定になっています。"
+        return
+    }
+
+    Write-Section "inputs フォルダのPDFを filesback フォルダへ移動します"
+
+    if (-not (Test-Path $InputDir)) {
+        throw "inputs フォルダが見つかりません: $InputDir"
+    }
+
+    # filesback フォルダが存在しない場合は作成する
+    if (-not (Test-Path $FilesbackDir)) {
+        New-Item -ItemType Directory -Path $FilesbackDir | Out-Null
+    }
+
+    # filesback フォルダの下に、現在日時のフォルダを作成してバックアップ先とする
+    $backupPath = New-CurrentDateTimeDirectory $FilesbackDir
+
+    # PDF移動元フォルダから領収書PDFだけを取得
+    $pdfFiles = Get-ChildItem -Path $InputDir -Filter $PdfFilePattern -File
+
+    if ($pdfFiles.Count -eq 0) {
+        throw "移動対象のPDFが見つかりませんでした。確認先: $InputDir / 条件: $PdfFilePattern"
+    }
+
+    # 取得したPDFを filesback の現在日時フォルダへ移動する
+    foreach ($pdf in $pdfFiles) {
+        Write-Host "move-filesback: $($pdf.Name)"
+        Move-Item -Path $pdf.FullName -Destination $backupPath -Force
+    }
+
+    Write-Host ""
+    Write-Host "$($pdfFiles.Count) 件のPDFをfilesbackに移動しました。"
+}
+
+<#
+    .SYNOPSIS
+    指定されたパス配下に、現在日時のフォルダを作成します。
+
+    .DESCRIPTION
+    引数で受け取った親フォルダパスの配下に、
+    yyyyMMdd_HHmmss 形式の現在日時フォルダを作成します。
+    作成したフォルダのパスを戻り値として返します。
+
+    .PARAMETER path
+    現在日時フォルダを作成する親フォルダのパス。
+
+    .OUTPUTS
+    string
+    作成した現在日時フォルダのパス。
+#>
+function New-CurrentDateTimeDirectory {
+    param(
+        [string]$path
+    )
+
+    # 現在日時のフォルダ名を作成
+    $folderName = Get-Date -Format "yyyyMMdd_HHmmss"
+
+    # 渡されたパス + 現在日時フォルダ
+    $createdPath = Join-Path -Path $path -ChildPath $folderName
+
+    # フォルダが無ければ作成
+    if (-not (Test-Path -Path $createdPath)) {
+        New-Item -ItemType Directory -Path $createdPath | Out-Null
+    }
+
+    # 作成したフォルダパスを返す
+    return $createdPath
+}
+
+<#
+    .SYNOPSIS
+    ダウンロード済みの領収書PDFを travel-expense-generator の inputs フォルダへ移動する。
+
+    .DESCRIPTION
+    PDF移動元フォルダから領収書PDFを取得し、
+    travel-expense-generator の inputs フォルダへ移動する。
+    $KeepExistingInputPdf が指定されていない場合は、
+    移動前に inputs 内の既存PDFを削除する。
 #>
 function Move-PdfsToInputs {
     Write-Section "PDFを inputs フォルダへ移動します"
@@ -143,13 +240,13 @@ function Move-PdfsToInputs {
 }
 
 <#
-.SYNOPSIS
-travel-expense-generator を実行し、交通費精算書を生成する。
+    .SYNOPSIS
+    travel-expense-generator を実行し、交通費精算書を生成する。
 
-.DESCRIPTION
-travel-expense-generator のルートディレクトリに移動し、
-inputs フォルダ内のPDFを元に交通費精算書を生成する。
-$Month が指定されている場合は、対象月を指定して実行する。
+    .DESCRIPTION
+    travel-expense-generator のルートディレクトリに移動し、
+    inputs フォルダ内のPDFを元に交通費精算書を生成する。
+    $Month が指定されている場合は、対象月を指定して実行する。
 #>
 function Run-ExpenseGenerator {
     Write-Section "交通費精算書の生成を開始します"
@@ -177,7 +274,12 @@ try {
     # 3. inputs フォルダ内のPDFを元に交通費精算書を生成する
     Run-ExpenseGenerator
 
-    Write-Section "すべての処理が完了しました"
+    Write-Section "すべての主処理が完了しました"
+
+    Write-Section "後処理を開始します"
+
+    # 4. inputs フォルダ内のPDFをfilesbackに移動する
+    InputsPdf-To-Filesback
 }
 catch {
     Write-Host ""

@@ -81,5 +81,4 @@ travel-expense-generator を実行
 * `travel-expense-generator`
 
 ## 更新予定
-* 処理終了後、処理に使用したpdfをinputsフォルダからfilesbackフォルダに移動させる
-* 生成物を自動化スクリプトから実行した際は`travel-expense-generator`内のoutputsでなく、自動化スクリプトのoutputに出力するように変更する
+* 実行時のプロンプト入力の最適化

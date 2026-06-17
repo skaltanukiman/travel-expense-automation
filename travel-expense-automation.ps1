@@ -32,8 +32,14 @@ $PdfSourceDir = Join-Path -Path $JrRepo -ChildPath "downloads"
 # travel-expense-generator 側の入力フォルダ
 $InputDir = Join-Path -Path $GeneratorRepo -ChildPath "inputs"
 
+# travel-expense-generator 側の出力フォルダ
+$OutputDir = Join-Path -Path $GeneratorRepo -ChildPath "outputs"
+
 # このps1ファイルが置かれているフォルダの下に、処理に使用したファイルを保存するためのフォルダを定義
 $FilesbackDir = Join-Path -Path $AutomationDir -ChildPath "filesback"
+
+# このps1ファイルが置かれているフォルダの下に、生成した交通費精算書を保存するためのフォルダを定義
+$ProcessedOutputDir = Join-Path -Path $AutomationDir -ChildPath "output"
 
 ##############
 
@@ -268,6 +274,55 @@ function Run-ExpenseGenerator {
     }
 }
 
+<#
+    .SYNOPSIS
+    生成された交通費精算書を automation 側の output フォルダへ移動します。
+
+    .DESCRIPTION
+    travel-expense-generator 側の output フォルダから .xlsx ファイルを取得し、
+    automation 側の output フォルダ配下に作成した現在日時フォルダへ移動します。
+
+    移動先フォルダが存在しない場合は作成します。
+    移動対象の Excel ファイルが存在しない場合はエラーを発生させます。
+    複数件存在する場合は警告を表示し、取得したファイルをすべて移動します。
+#>
+function Move-ResultExcel-To-Output {
+    Write-Section "生成された交通費精算書をautomation の output フォルダへ移動します"
+
+    if (-not (Test-Path $OutputDir)) {
+        throw "成果物格納元 フォルダが見つかりません: $OutputDir"
+    }
+
+    #  交通費精算書の格納先となる output フォルダが存在しない場合は作成する
+    if (-not (Test-Path $ProcessedOutputDir)) {
+        New-Item -ItemType Directory -Path $ProcessedOutputDir | Out-Null
+    }
+
+    # travel-expense-generator 側の output フォルダから、生成された交通費精算書を取得
+    $resultExcelFiles = Get-ChildItem -Path $OutputDir -Filter "*.xlsx" -File
+
+    if ($resultExcelFiles.Count -eq 0) {
+        throw "移動対象の交通費精算書が見つかりませんでした。確認先: $OutputDir / 条件: *.xlsx"
+    }
+
+    if ($resultExcelFiles.Count -gt 1) {
+        Write-Host ""
+        Write-Host "警告: 生成された交通費精算書が複数件見つかりました。"
+    }
+
+    # 交通費精算書格納先 output フォルダの下に、現在日時のフォルダを作成して格納先とする
+    $storagePath = New-CurrentDateTimeDirectory $ProcessedOutputDir
+
+    # 取得した交通費精算書を output フォルダへ移動する
+    foreach ($excel in $resultExcelFiles) {
+        Write-Host "move-storage-output: $($excel.Name)"
+        Move-Item -Path $excel.FullName -Destination $storagePath -Force
+    }
+
+    Write-Host ""
+    Write-Host "$($resultExcelFiles.Count) 件の交通費精算書を output に移動しました。"
+}
+
 try {
     # 1. JR九州サイトから領収書PDFをダウンロードする
     Run-JrDownload
@@ -284,6 +339,11 @@ try {
 
     # 4. inputs フォルダ内のPDFをfilesbackに移動する
     InputsPdf-To-Filesback
+
+    # 5. 生成された交通費精算書を automation の output フォルダへ移動する
+    Move-ResultExcel-To-Output
+
+    Write-Section "すべての処理が完了しました"
 }
 catch {
     Write-Host ""

@@ -37,8 +37,12 @@ $FilesbackDir = Join-Path -Path $AutomationDir -ChildPath "filesback"
 
 ##############
 
+#### ファイル抽出条件 ####
+
 # Downloads内の無関係なPDFまで移動しないため、領収書系PDFだけに絞る
 $PdfFilePattern = "*領収書_JR*.pdf"
+
+########################
 
 <#
     .SYNOPSIS

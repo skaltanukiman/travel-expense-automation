@@ -1,4 +1,5 @@
 @echo off
+setlocal DisableDelayedExpansion
 
 REM このbatが置かれているフォルダに移動
 cd /d "%~dp0"
@@ -12,7 +13,17 @@ echo 対象月を入力してください。
 echo 例: 2026-05
 echo 空のままEnterで月指定なし
 echo.
+set "MONTH="
 set /p MONTH=対象月:
+
+echo.
+echo Excel転記から除外する日を入力してください。
+echo 例: 23
+echo 複数指定: 13,23,25
+echo 除外しない場合は空のままEnter
+echo.
+set "EXCLUDE_DAYS="
+set /p EXCLUDE_DAYS=除外日:
 
 :ASK_KEEP_INPUT
 echo.
@@ -40,13 +51,13 @@ goto ASK_KEEP_INPUT
 :RUN_KEEP
 echo.
 echo 既存PDFを残して処理を開始します。
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0travel-expense-automation.ps1" -Month "%MONTH%" -KeepExistingInputPdf
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0travel-expense-automation.ps1" -Month "%MONTH%" -ExcludeDays "%EXCLUDE_DAYS%" -KeepExistingInputPdf
 goto CHECK_RESULT
 
 :RUN_DELETE
 echo.
 echo 既存PDFを削除して処理を開始します。
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0travel-expense-automation.ps1" -Month "%MONTH%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0travel-expense-automation.ps1" -Month "%MONTH%" -ExcludeDays "%EXCLUDE_DAYS%"
 goto CHECK_RESULT
 
 :CHECK_RESULT

@@ -35,6 +35,39 @@ run.bat
 
 実行すると、領収書PDFの取得から交通費精算書Excelの生成までが順番に実行されます。
 
+
+### 起動時の入力
+
+`run.bat` は次の順で入力を受け付けます。
+
+1. 対象月（例: `2026-09`、空Enterで領収書から推測）
+2. Excel転記から除外する日（例: `23`、複数なら `13,23,25`、空Enterで除外なし）
+3. inputs内の既存PDFを残すか（Y: 残す、N／空Enter: 従来どおり入替・処理後にfilesbackへ移動）
+
+除外日は `13, 23, 25` のように空白を含んでも入力できます。batの `-ExcludeDays` パラメータからPowerShellへ渡し、PowerShellは引数配列を使ってgeneratorの `--exclude-days` に渡します。1～31の整数、重複の除去、対象月の日数（閏年を含む）の検証はgeneratorが行います。
+
+直接PowerShellから実行する場合:
+
+```powershell
+.\travel-expense-automation.ps1 -Month "2026-09" -ExcludeDays "23"
+.\travel-expense-automation.ps1 -Month "2026-09" -ExcludeDays "13, 23, 25" -KeepExistingInputPdf
+.\travel-expense-automation.ps1 -ExcludeDays "13,23,25"
+.\travel-expense-automation.ps1 -Month "2026-09"
+.\travel-expense-automation.ps1
+```
+
+除外日はExcelの精算対象だけに適用します。同日のJR往復と `eachReceiptDate` のバス等も除外されます。JR九州からのPDF取得は従来どおりです。成功時は除外したPDFも含めて従来のfilesback処理を行い、`-KeepExistingInputPdf` 指定時はinputsに残します。
+
+全件除外・入力エラーなどでgeneratorが終了コード1を返した場合、空Excelを生成せず、automationも後処理へ進まず停止します。この場合、PDFはinputsに残り、既存の出力Excelは移動しません。
+
+### 開発・検証
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/arguments.test.ps1
+```
+
+PowerShellの構文、月／除外日の有無4パターン、空白・不正値の受け渡し、generator失敗時の停止を検証します。また、実際のrun.batを一時フォルダで起動し、Y／N／空EnterそれぞれのPowerShell引数を検証します。ダウンロード、実PDFの移動、実Excelの移動は行いません。
+
 ## 処理内容
 
 `run.bat` では、以下の処理を行います。

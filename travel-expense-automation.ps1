@@ -9,7 +9,10 @@ param (
 
     # inputs 内の既存PDFを残したい場合は指定する
     # 例: .\travel-expense-automation.ps1 -KeepExistingInputPdf
-    [switch]$KeepExistingInputPdf
+    [switch]$KeepExistingInputPdf,
+
+    # Excel転記から除外する日（例: 13,23,25）。検証はgeneratorで行う。
+    [string]$ExcludeDays = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -266,10 +269,20 @@ function Run-ExpenseGenerator {
     }
 
     Invoke-InDirectory $GeneratorRepo {
-        if ([string]::IsNullOrWhiteSpace($Month)) {
-            npm.cmd run generate
-        } else {
-            npm.cmd run generate -- --month $Month
+        $generatorArgs = @()
+        if (-not [string]::IsNullOrWhiteSpace($Month)) {
+            $generatorArgs += @('--month', $Month)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ExcludeDays)) {
+            $generatorArgs += @('--exclude-days', $ExcludeDays)
+        }
+        $npmArgs = @('run', 'generate')
+        if ($generatorArgs.Count -gt 0) {
+            $npmArgs += @('--') + $generatorArgs
+        }
+        & npm.cmd @npmArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "交通費精算書の生成に失敗しました（終了コード: $LASTEXITCODE）。PDFはinputsに保持します。"
         }
     }
 }
